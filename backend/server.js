@@ -62,6 +62,54 @@ app.post('/api/turnos', (req, res) => {
   res.status(201).json(turno);
 });
 
+// ---------- 3c. PATCH /api/turnos/:id : cambiar estado ----------
+// Solo se permiten dos transiciones: pendiente -> llamado, llamado -> atendido
+app.patch('/api/turnos/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const estado = req.body?.estado;
+  const funcionario = (req.body?.funcionario ?? '').toString().trim();
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Id inválido' });
+  }
+  if (estado !== 'llamado' && estado !== 'atendido') {
+    return res.status(400).json({ error: 'El estado debe ser "llamado" o "atendido"' });
+  }
+  if (estado === 'llamado' && funcionario.length === 0) {
+    return res.status(400).json({ error: 'Debe indicar el funcionario que llama' });
+  }
+
+  let info;
+  if (estado === 'llamado') {
+    // El WHERE incluye "estado = 'pendiente'": verificar y actualizar en UNA sola operación
+    info = db.prepare(`
+      UPDATE turnos
+      SET estado = 'llamado', funcionario = ?, llamado_en = datetime('now', 'localtime')
+      WHERE id = ? AND estado = 'pendiente'
+    `).run(funcionario, id);
+  } else {
+    info = db.prepare(`
+      UPDATE turnos
+      SET estado = 'atendido', atendido_en = datetime('now', 'localtime')
+      WHERE id = ? AND estado = 'llamado'
+    `).run(id);
+  }
+
+  // info.changes = cuántas filas se modificaron
+  if (info.changes === 0) {
+    const actual = buscarTurno(id);
+    if (!actual) {
+      return res.status(404).json({ error: 'El turno no existe' });
+    }
+    return res.status(409).json({
+      error: `No se puede cambiar: el turno ${actual.numero} está "${actual.estado}"`,
+      turno: actual,
+    });
+  }
+
+  res.json(buscarTurno(id));
+});
+
 // TODO: ruta GET "/" que responda un texto
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');
