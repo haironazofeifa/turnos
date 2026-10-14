@@ -33,6 +33,35 @@ app.get('/api/turnos', (req, res) => {
   res.json(turnos);
 });
 
+// ---------- 3b. POST /api/turnos : crear turno ----------
+// La transacción hace que "calcular el número" e "insertar" sean una sola operación.
+// Así dos funcionarios creando turnos a la vez nunca reciben el mismo número.
+const crearTurno = db.transaction((cliente) => {
+  const { siguiente } = db
+    .prepare('SELECT COALESCE(MAX(numero), 0) + 1 AS siguiente FROM turnos')
+    .get();
+
+  const info = db
+    .prepare('INSERT INTO turnos (numero, cliente) VALUES (?, ?)')
+    .run(siguiente, cliente);
+
+  return buscarTurno(info.lastInsertRowid);
+});
+
+app.post('/api/turnos', (req, res) => {
+  const cliente = (req.body?.cliente ?? '').toString().trim();
+
+  // Validación en el servidor: nunca confiamos solo en la del formulario
+  if (cliente.length < 2 || cliente.length > 60) {
+    return res
+      .status(400)
+      .json({ error: 'El nombre del cliente debe tener entre 2 y 60 caracteres' });
+  }
+
+  const turno = crearTurno(cliente);
+  res.status(201).json(turno);
+});
+
 // TODO: ruta GET "/" que responda un texto
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');
