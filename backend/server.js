@@ -110,6 +110,38 @@ app.patch('/api/turnos/:id', (req, res) => {
   res.json(buscarTurno(id));
 });
 
+// ---------- 4. POST /api/turnos/siguiente : llamar al siguiente pendiente ----------
+// Una sola instrucción SQL busca el pendiente con el número más bajo y lo marca como llamado.
+// Como es UNA operación atómica, dos funcionarios nunca pueden recibir el mismo turno.
+// RETURNING * devuelve la fila modificada (o nada si no había pendientes).
+const llamarSiguiente = db.prepare(`
+  UPDATE turnos
+  SET estado = 'llamado', funcionario = ?, llamado_en = datetime('now', 'localtime')
+  WHERE id = (
+    SELECT id FROM turnos
+    WHERE estado = 'pendiente'
+    ORDER BY numero
+    LIMIT 1
+  )
+  RETURNING *
+`);
+
+app.post('/api/turnos/siguiente', (req, res) => {
+  const funcionario = (req.body?.funcionario ?? '').toString().trim();
+
+  if (funcionario.length === 0) {
+    return res.status(400).json({ error: 'Debe indicar el funcionario que llama' });
+  }
+
+  const turno = llamarSiguiente.get(funcionario);
+
+  if (!turno) {
+    return res.status(404).json({ error: 'No hay turnos pendientes' });
+  }
+
+  res.json(turno);
+});
+
 // TODO: ruta GET "/" que responda un texto
 app.get('/', (req, res) => {
   res.send('¡Hola, mundo!');
