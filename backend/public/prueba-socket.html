@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Prueba Socket.IO</title>
+</head>
+<body>
+  <h1>Prueba de WebSockets</h1>
+  <p id="estado">Conectando...</p>
+  <ul id="eventos"></ul>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const estado = document.getElementById('estado');
+    const lista = document.getElementById('eventos');
+
+    function agregar(texto) {
+      const li = document.createElement('li');
+      li.textContent = new Date().toLocaleTimeString() + ' - ' + texto;
+      lista.prepend(li);
+    }
+
+    socket.on('connect', () => {
+      estado.textContent = 'Conectado (' + socket.id + ')';
+      estado.style.color = 'green';
+    });
+
+    socket.on('disconnect', () => {
+      estado.textContent = 'Desconectado, reconectando...';
+      estado.style.color = 'red';
+    });
+
+    socket.on('turno_creado', (t) => {
+      agregar('turno_creado: #' + t.numero + ' ' + t.cliente);
+    });
+
+    socket.on('turno_actualizado', (t) => {
+      agregar('turno_actualizado: #' + t.numero + ' -> ' + t.estado + ' (' + (t.funcionario ?? '') + ')');
+    });
+  </script>
+</body>
+</html>
