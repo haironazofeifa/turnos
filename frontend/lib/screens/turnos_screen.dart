@@ -1,9 +1,15 @@
+/// Main (and only) screen of the app: create, call and serve tickets.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/turno.dart';
 import '../providers/turnos_provider.dart';
 
-// Paleta de colores de la interfaz (tonos cálidos)
+/// Color palette of the interface (warm tones).
+///
+/// Each column has a strong color for icons and a light variant for
+/// backgrounds: peach for pending, sage for called, terracotta for served.
 class Paleta {
   static const fondo = Color(0xFFFAF6F1);
   static const tarjeta = Color(0xFFFFFCF8);
@@ -19,7 +25,13 @@ class Paleta {
   static const enLinea = Color(0xFF6BAA75);
 }
 
+/// Ticket management screen.
+///
+/// Shows a header with the connection status, the controls to enter the
+/// clerk and customer names, and three columns: pending, called and served
+/// tickets. Reads and updates the [TurnosProvider] above it in the tree.
 class TurnosScreen extends StatefulWidget {
+  /// Creates the ticket management screen.
   const TurnosScreen({super.key});
 
   @override
@@ -29,7 +41,13 @@ class TurnosScreen extends StatefulWidget {
 class _TurnosScreenState extends State<TurnosScreen> {
   final _formKey = GlobalKey<FormState>();
   final _clienteCtrl = TextEditingController();
+  /// Whether a "create ticket" request is in progress.
+  /// Disables the create button to avoid duplicate tickets.
   bool _enviando = false;
+
+  /// Whether a call or serve request is in progress.
+  /// Disables those buttons so a double click cannot send two requests.
+  bool _procesando = false;
 
   @override
   void dispose() {
@@ -37,11 +55,15 @@ class _TurnosScreenState extends State<TurnosScreen> {
     super.dispose();
   }
 
-  // "2026-10-14 13:50:19" -> "13:50"
+  /// Extracts the `HH:MM` part of a backend timestamp.
+  ///
+  /// `"2026-10-14 13:50:19"` -> `"13:50"`. Returns an empty string for
+  /// `null` or malformed values.
   String _hora(String? fecha) =>
       (fecha == null || fecha.length < 16) ? '' : fecha.substring(11, 16);
 
-  // Mensaje flotante: verde si salió bien, rojo si hubo error
+  /// Shows a floating message: [error] in red if it is not `null`,
+  /// otherwise [exito] in green.
   void _avisar(String? error, String exito) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -54,6 +76,9 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
+  /// Validates the customer name and creates a ticket.
+  ///
+  /// Clears the field on success and shows the result either way.
   Future<void> _crearTurno() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -67,13 +92,24 @@ class _TurnosScreenState extends State<TurnosScreen> {
     _avisar(error, 'Turno creado');
   }
 
+  /// Runs a call/serve [accion] and shows its result, using [exito] as the
+  /// success message.
+  ///
+  /// Does nothing while another action is in progress, and asks for the
+  /// clerk name first if it is empty.
   Future<void> _accion(Future<String?> Function() accion, String exito) async {
+    if (_procesando) return;
     if (context.read<TurnosProvider>().funcionario.isEmpty) {
       _avisar('Escribí tu nombre de funcionario primero', '');
       return;
     }
-    final error = await accion();
-    _avisar(error, exito);
+    setState(() => _procesando = true);
+    try {
+      final error = await accion();
+      _avisar(error, exito);
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
   }
 
   @override
@@ -86,7 +122,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
       backgroundColor: Paleta.fondo,
       body: Stack(
         children: [
-          // Mancha decorativa arriba a la derecha
+          // Decorative blob in the top-right corner.
           Positioned(
             top: -90,
             right: -70,
@@ -143,7 +179,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
-  // ---------- Encabezado: título, estado de conexión y recargar ----------
+  /// Header: title, connection status and reload button.
   Widget _encabezado(TurnosProvider p) {
     return Row(
       children: [
@@ -181,6 +217,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
+  /// Pill showing "En línea" (online) or "Reconectando..." (reconnecting).
   Widget _estadoConexion(bool conectado) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -203,7 +240,10 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
-  // ---------- Controles: funcionario, cliente y botones ----------
+  /// Controls: clerk name, customer name, "create" and "call next" buttons.
+  ///
+  /// The customer field is validated on the client with the same rules as
+  /// the backend (2-60 characters).
   Widget _controles(TurnosProvider p) {
     return Wrap(
       spacing: 12,
@@ -241,7 +281,8 @@ class _TurnosScreenState extends State<TurnosScreen> {
           style: _estiloBoton(Paleta.terracota, Colors.white),
         ),
         FilledButton.icon(
-          onPressed: () => _accion(p.llamarSiguiente, 'Turno llamado'),
+          onPressed:
+              _procesando ? null : () => _accion(p.llamarSiguiente, 'Turno llamado'),
           icon: const Icon(Icons.campaign_outlined),
           label: const Text('Llamar siguiente'),
           style: _estiloBoton(Paleta.salviaClaro, Paleta.salvia),
@@ -250,6 +291,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
+  /// Rounded, filled input style with a [texto] hint and an [icono] prefix.
   InputDecoration _decoracion(String texto, IconData icono) {
     OutlineInputBorder borde(Color color) => OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
@@ -270,6 +312,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
+  /// Pill-shaped button style with the given [fondo] and [texto] colors.
   ButtonStyle _estiloBoton(Color fondo, Color texto) => FilledButton.styleFrom(
         backgroundColor: fondo,
         foregroundColor: texto,
@@ -278,7 +321,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       );
 
-  // ---------- Las tres columnas ----------
+  /// Pending column: each ticket has a button to call it.
   Widget _columnaPendientes(TurnosProvider p) => _columna(
         titulo: 'Pendientes',
         icono: Icons.hourglass_bottom,
@@ -301,6 +344,8 @@ class _TurnosScreenState extends State<TurnosScreen> {
         ),
       );
 
+  /// Called column: shows who called each ticket and a button to mark it
+  /// as served.
   Widget _columnaLlamados(TurnosProvider p) => _columna(
         titulo: 'Llamados',
         icono: Icons.call,
@@ -323,6 +368,8 @@ class _TurnosScreenState extends State<TurnosScreen> {
         ),
       );
 
+  /// Served column: read-only history with created, called and served
+  /// times.
   Widget _columnaAtendidos(TurnosProvider p) => _columna(
         titulo: 'Atendidos',
         icono: Icons.check,
@@ -347,7 +394,11 @@ class _TurnosScreenState extends State<TurnosScreen> {
         ),
       );
 
-  // Molde común de cada columna
+  /// Shared layout for the three columns.
+  ///
+  /// Renders a colored header with [titulo], [icono] and the ticket count,
+  /// then either the list of [turnos] (each built with [item]) or an empty
+  /// state with [vacioIcono], [vacioTitulo] and [vacioTexto].
   Widget _columna({
     required String titulo,
     required IconData icono,
@@ -376,7 +427,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Encabezado de la columna
+          // Column header
           Container(
             color: colorClaro,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -411,7 +462,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
               ],
             ),
           ),
-          // Contenido: lista o estado vacío
+          // Body: ticket list or empty state
           Expanded(
             child: turnos.isEmpty
                 ? _estadoVacio(vacioIcono, vacioTitulo, vacioTexto, color, colorClaro)
@@ -427,6 +478,7 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
+  /// Placeholder shown when a column has no tickets.
   Widget _estadoVacio(
       IconData icono, String titulo, String texto, Color color, Color colorClaro) {
     return Center(
@@ -459,7 +511,8 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
-  // Tarjeta de cada turno
+  /// Card for a single ticket: number badge, customer name, a [detalle]
+  /// line and an [accion] widget on the right.
   Widget _itemTurno(
     Turno t, {
     required String detalle,
@@ -507,10 +560,13 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
+  /// Round icon button used for ticket actions.
+  ///
+  /// Disabled while another action is in progress (see [_procesando]).
   Widget _botonRedondo(
       IconData icono, String tooltip, Color color, VoidCallback onPressed) {
     return IconButton(
-      onPressed: onPressed,
+      onPressed: _procesando ? null : onPressed,
       tooltip: tooltip,
       icon: Icon(icono, size: 20),
       style: IconButton.styleFrom(

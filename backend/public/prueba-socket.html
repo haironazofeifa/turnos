@@ -1,4 +1,11 @@
 <!doctype html>
+<!--
+  Socket.IO test page.
+
+  Open http://localhost:3000/prueba-socket.html while the server is running.
+  It shows the connection status and lists every `turno_creado` and
+  `turno_actualizado` event as it arrives (newest first).
+-->
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -9,12 +16,18 @@
   <p id="estado">Conectando...</p>
   <ul id="eventos"></ul>
 
+  <!-- Client library served automatically by the Socket.IO server. -->
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // Connects to the same host that served this page.
     const socket = io();
     const estado = document.getElementById('estado');
     const lista = document.getElementById('eventos');
 
+    /**
+     * Adds a timestamped line to the top of the event list.
+     * @param {string} texto - Text to display.
+     */
     function agregar(texto) {
       const li = document.createElement('li');
       li.textContent = new Date().toLocaleTimeString() + ' - ' + texto;

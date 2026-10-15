@@ -1,2 +1,5 @@
 node_modules/
+# SQLite database and its WAL-mode temporary files
 *.db
+*.db-wal
+*.db-shm

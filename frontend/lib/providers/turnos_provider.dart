@@ -1,25 +1,52 @@
+/// Application state for the tickets screen.
+library;
+
 import 'package:flutter/foundation.dart';
 
 import '../models/turno.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 
+/// Holds the tickets, the current clerk and the connection status, and
+/// exposes the actions the UI can perform.
+///
+/// Tickets arrive from two sources: REST responses (after the user's own
+/// actions or a full reload) and WebSocket events (after anyone's actions).
+/// Both go through [aplicarTurno], which keeps a single copy of each ticket
+/// and never lets it move back to an earlier state.
+///
+/// Typical setup:
+///
+/// ```dart
+/// TurnosProvider()
+///   ..cargarTurnos()
+///   ..iniciarTiempoReal();
+/// ```
 class TurnosProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
 
-  // Los turnos se guardan por id: así un mismo turno nunca aparece dos veces.
+  /// Tickets keyed by id, so the same ticket can never appear twice.
   final Map<int, Turno> _turnos = {};
 
+  /// Whether a full reload ([cargarTurnos]) is in progress.
   bool cargando = false;
+
+  /// Message from the last failed reload, or `null` if it succeeded.
   String? error;
+
+  /// Name of the clerk using this screen. Sent with every call action.
   String funcionario = '';
 
   final SocketService _socket = SocketService();
+
+  /// Whether the WebSocket is currently connected.
   bool conectado = false;
 
-  // Conecta el WebSocket.
-  // Cada vez que se conecta o RECONECTA, recarga todo desde el backend.
-  // Así recupera los cambios que se perdió mientras estuvo desconectado.
+  /// Opens the WebSocket connection.
+  ///
+  /// Every time the socket connects **or reconnects**, all tickets are
+  /// reloaded from the backend to recover any change missed while offline.
+  /// Incoming ticket events are passed to [aplicarTurno].
   void iniciarTiempoReal() {
     _socket.conectar(
       alConectar: () {
@@ -31,8 +58,7 @@ class TurnosProvider extends ChangeNotifier {
         conectado = false;
         notifyListeners();
       },
-      alRecibirTurno:
-          aplicarTurno, // agrega o reemplaza por id (sin duplicados)
+      alRecibirTurno: aplicarTurno,
     );
   }
 
@@ -42,32 +68,51 @@ class TurnosProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  // Orden de los estados: sirve para no "retroceder" un turno (ver aplicarTurno).
+  /// Position of each state in the lifecycle. Used by [aplicarTurno] to
+  /// detect stale data that would move a ticket backwards.
   static const Map<String, int> _orden = {
     'pendiente': 0,
     'llamado': 1,
     'atendido': 2,
   };
 
-  // ---------- Listas para la interfaz ----------
+  /// Returns the tickets in [estado], sorted by number (ascending).
   List<Turno> _porEstado(String estado) {
     final lista = _turnos.values.where((t) => t.estado == estado).toList();
     lista.sort((a, b) => a.numero.compareTo(b.numero));
     return lista;
   }
 
+  /// Pending tickets, lowest number first.
   List<Turno> get pendientes => _porEstado('pendiente');
-  List<Turno> get llamados => _porEstado('llamado');
-  List<Turno> get atendidos =>
-      _porEstado('atendido').reversed.toList(); // recientes primero
 
+  /// Called tickets, lowest number first.
+  List<Turno> get llamados => _porEstado('llamado');
+
+  /// Served tickets, most recently served first.
+  ///
+  /// Sorted by [Turno.atendidoEn]; its `YYYY-MM-DD HH:MM:SS` format sorts
+  /// correctly as text. Tickets served in the same second are ordered by
+  /// number, highest first.
+  List<Turno> get atendidos {
+    final lista = _porEstado('atendido');
+    lista.sort((a, b) {
+      final porHora = (b.atendidoEn ?? '').compareTo(a.atendidoEn ?? '');
+      return porHora != 0 ? porHora : b.numero.compareTo(a.numero);
+    });
+    return lista;
+  }
+
+  /// Sets the clerk name (trimmed) used for call actions.
   void setFuncionario(String nombre) {
     funcionario = nombre.trim();
     notifyListeners();
   }
 
-  // ---------- Cargar todo desde el backend ----------
-  // También se usará al reconectar el WebSocket (Fase 7) para recuperar el estado real.
+  /// Replaces all local tickets with the backend's current list.
+  ///
+  /// Called at startup and on every WebSocket (re)connection. On failure the
+  /// existing tickets are kept and [error] is set.
   Future<void> cargarTurnos() async {
     cargando = true;
     error = null;
@@ -86,13 +131,14 @@ class TurnosProvider extends ChangeNotifier {
     }
   }
 
-  // ---------- Agregar o reemplazar un turno ----------
-  // Se usa con la respuesta REST y, en la Fase 7, con los eventos del WebSocket.
+  /// Adds [nuevo] or replaces the stored ticket with the same id.
+  ///
+  /// Ignores [nuevo] if it is in an earlier state than the stored copy. For
+  /// example, if the ticket is already `atendido` and a late `llamado` event
+  /// arrives, the event is dropped.
   void aplicarTurno(Turno nuevo) {
     final actual = _turnos[nuevo.id];
 
-    // Si llega información más vieja que la que ya tenemos, se ignora.
-    // Ejemplo: ya sabemos que está "atendido" y llega tarde un "llamado".
     if (actual != null && _orden[nuevo.estado]! < _orden[actual.estado]!) {
       return;
     }
@@ -101,29 +147,44 @@ class TurnosProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- Acciones del usuario ----------
-  // Cada una devuelve null si salió bien, o el mensaje de error para mostrarlo en pantalla.
+  /// Runs an API [accion] and applies the returned ticket.
+  ///
+  /// Returns `null` on success, or an error message ready to show the user:
+  /// the backend's message for an [ApiException] (such as a 409), or a
+  /// generic connection error otherwise.
   Future<String?> _ejecutar(Future<Turno> Function() accion) async {
     try {
       final turno = await accion();
       aplicarTurno(turno);
       return null;
     } on ApiException catch (e) {
-      return e.mensaje; // por ejemplo, el mensaje del 409
+      return e.mensaje;
     } catch (e) {
       return 'Error de conexión con el servidor';
     }
   }
 
+  /// Creates a ticket for [cliente].
+  ///
+  /// Returns `null` on success or an error message.
   Future<String?> crearTurno(String cliente) =>
       _ejecutar(() => _api.crearTurno(cliente));
 
+  /// Calls the next pending ticket on behalf of [funcionario].
+  ///
+  /// Returns `null` on success or an error message.
   Future<String?> llamarSiguiente() =>
       _ejecutar(() => _api.llamarSiguiente(funcionario));
 
+  /// Calls the ticket with [id] on behalf of [funcionario].
+  ///
+  /// Returns `null` on success or an error message.
   Future<String?> llamarTurno(int id) =>
       _ejecutar(() => _api.llamarTurno(id, funcionario));
 
+  /// Marks the ticket with [id] as served.
+  ///
+  /// Returns `null` on success or an error message.
   Future<String?> marcarAtendido(int id) =>
       _ejecutar(() => _api.marcarAtendido(id));
 }

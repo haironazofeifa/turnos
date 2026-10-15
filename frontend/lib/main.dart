@@ -1,13 +1,19 @@
+/// Entry point of the ticket management (turnos) web app.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/turnos_provider.dart';
 import 'screens/turnos_screen.dart';
 
+/// Starts the app.
+///
+/// [TurnosProvider] wraps the whole widget tree so any screen can read the
+/// tickets. As soon as it is created it loads the tickets from the backend
+/// and opens the real-time WebSocket connection.
 void main() {
   runApp(
-    // El provider envuelve toda la app: cualquier pantalla puede leer los turnos.
-    // "..cargarTurnos()" pide los turnos al backend apenas arranca.
     ChangeNotifierProvider(
       create: (_) => TurnosProvider()
         ..cargarTurnos()
@@ -17,7 +23,11 @@ void main() {
   );
 }
 
+/// Root widget: configures the Material theme and shows [TurnosScreen].
+///
+/// Expects a [TurnosProvider] above it in the widget tree.
 class MyApp extends StatelessWidget {
+  /// Creates the root widget.
   const MyApp({super.key});
 
   @override

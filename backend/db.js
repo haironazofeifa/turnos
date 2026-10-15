@@ -1,18 +1,46 @@
-// Importamos la librería de SQLite y "path" (viene con Node, sirve para armar rutas de archivos)
+/**
+ * @file SQLite connection and schema setup.
+ *
+ * Opens (or creates) `turnos.db` next to this file, enables WAL mode and makes
+ * sure the `turnos` table exists. The module exports a single shared
+ * connection that the rest of the backend reuses.
+ *
+ * @module db
+ */
+
 const Database = require('better-sqlite3');
 const path = require('path');
 
-// __dirname es la carpeta donde está este archivo (backend).
-// Así turnos.db siempre se crea en backend, sin importar desde dónde se ejecute el servidor.
+/**
+ * Absolute path to the database file.
+ *
+ * Built from `__dirname` so the file always lives in `backend/`, no matter
+ * which directory the server is started from.
+ * @type {string}
+ */
 const rutaDb = path.join(__dirname, 'turnos.db');
 
-// Abre la base de datos. Si el archivo no existe, lo crea.
+/**
+ * Shared database connection. The file is created if it does not exist.
+ * @type {import('better-sqlite3').Database}
+ */
 const db = new Database(rutaDb);
 
-// WAL mejora el rendimiento cuando hay lecturas y escrituras al mismo tiempo.
+// Write-Ahead Logging lets reads and writes happen at the same time without
+// blocking each other, which improves performance with several clients.
 db.pragma('journal_mode = WAL');
 
-// Crea la tabla solo si no existe. Por eso no da error al reiniciar el servidor.
+// `IF NOT EXISTS` makes this idempotent: restarting the server keeps the data.
+//
+// Columns:
+//   id          Internal identifier.
+//   numero      Sequential ticket number shown to the customer (assigned by the server).
+//   cliente     Customer name.
+//   estado      Lifecycle state: 'pendiente' -> 'llamado' -> 'atendido'.
+//   funcionario Name of the clerk who called the ticket (NULL while pending).
+//   creado_en   Local timestamp when the ticket was created.
+//   llamado_en  Local timestamp when the ticket was called.
+//   atendido_en Local timestamp when the ticket was served.
 db.exec(`
   CREATE TABLE IF NOT EXISTS turnos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,5 +57,4 @@ db.exec(`
 
 console.log('Base de datos lista en', rutaDb);
 
-// Exportamos la conexión para usarla en server.js
 module.exports = db;

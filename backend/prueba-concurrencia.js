@@ -1,8 +1,28 @@
-// Prueba de concurrencia: simula dos funcionarios actuando al mismo tiempo.
-// Requisito: el servidor debe estar encendido (npm start en otra terminal).
+/**
+ * @file Concurrency test: simulates two clerks acting at the same time.
+ *
+ * Runs two scenarios against the live API and prints `CORRECTO` or `ERROR`:
+ * 1. Two clerks call the SAME ticket at once -> exactly one must succeed.
+ * 2. Two clerks press "call next" at once -> each must get a different ticket.
+ *
+ * Prerequisite: the server must be running (`npm start` in another terminal).
+ * Note: this script creates real tickets in the database.
+ *
+ * Usage: `node prueba-concurrencia.js`
+ */
+
+/** Base URL of the tickets API. */
 const URL = 'http://localhost:3000/api/turnos';
+
+/** Headers for JSON request bodies. */
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
+/**
+ * Creates a ticket.
+ *
+ * @param {string} cliente - Customer name.
+ * @returns {Promise<Object>} The created ticket as returned by the API.
+ */
 async function crearTurno(cliente) {
   const res = await fetch(URL, {
     method: 'POST',
@@ -12,6 +32,14 @@ async function crearTurno(cliente) {
   return res.json();
 }
 
+/**
+ * Tries to call a specific ticket (`pendiente -> llamado`).
+ *
+ * @param {number} id - Ticket id.
+ * @param {string} funcionario - Name of the clerk making the call.
+ * @returns {Promise<{funcionario: string, status: number, body: Object}>}
+ *   The clerk name, the HTTP status and the parsed response body.
+ */
 async function llamarTurno(id, funcionario) {
   const res = await fetch(`${URL}/${id}`, {
     method: 'PATCH',
@@ -21,6 +49,13 @@ async function llamarTurno(id, funcionario) {
   return { funcionario, status: res.status, body: await res.json() };
 }
 
+/**
+ * Calls the next pending ticket.
+ *
+ * @param {string} funcionario - Name of the clerk making the call.
+ * @returns {Promise<{funcionario: string, status: number, body: Object}>}
+ *   The clerk name, the HTTP status and the parsed response body.
+ */
 async function llamarSiguiente(funcionario) {
   const res = await fetch(`${URL}/siguiente`, {
     method: 'POST',
@@ -30,6 +65,14 @@ async function llamarSiguiente(funcionario) {
   return { funcionario, status: res.status, body: await res.json() };
 }
 
+/**
+ * Runs both scenarios and prints the results.
+ *
+ * `Promise.all` fires both requests without waiting for the first one to
+ * finish, which is what makes them race against each other on the server.
+ *
+ * @returns {Promise<void>}
+ */
 async function main() {
   console.log('=== Prueba 1: dos funcionarios llaman EL MISMO turno a la vez ===');
   const turno = await crearTurno('Prueba concurrencia');
