@@ -3,6 +3,22 @@ import 'package:provider/provider.dart';
 import '../models/turno.dart';
 import '../providers/turnos_provider.dart';
 
+// Paleta de colores de la interfaz (tonos cálidos)
+class Paleta {
+  static const fondo = Color(0xFFFAF6F1);
+  static const tarjeta = Color(0xFFFFFCF8);
+  static const borde = Color(0xFFEDE4DA);
+  static const texto = Color(0xFF4A4039);
+  static const textoSuave = Color(0xFF9A8F86);
+  static const terracota = Color(0xFFE07A5F);
+  static const terracotaClaro = Color(0xFFF9E4DC);
+  static const durazno = Color(0xFFD98B5F);
+  static const duraznoClaro = Color(0xFFFBEADF);
+  static const salvia = Color(0xFF6B8F71);
+  static const salviaClaro = Color(0xFFE6ECE3);
+  static const enLinea = Color(0xFF6BAA75);
+}
+
 class TurnosScreen extends StatefulWidget {
   const TurnosScreen({super.key});
 
@@ -25,19 +41,20 @@ class _TurnosScreenState extends State<TurnosScreen> {
   String _hora(String? fecha) =>
       (fecha == null || fecha.length < 16) ? '' : fecha.substring(11, 16);
 
-  // Muestra un mensaje verde (éxito) o rojo (error)
+  // Mensaje flotante: verde si salió bien, rojo si hubo error
   void _avisar(String? error, String exito) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(error ?? exito),
-        backgroundColor: error == null ? Colors.green : Colors.red,
+        backgroundColor: error == null ? Paleta.salvia : Colors.red.shade400,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
   Future<void> _crearTurno() async {
-    // Validación en el frontend (el backend valida otra vez)
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _enviando = true);
@@ -50,7 +67,6 @@ class _TurnosScreenState extends State<TurnosScreen> {
     _avisar(error, 'Turno creado');
   }
 
-  // Para llamar o atender hace falta saber quién es el funcionario
   Future<void> _accion(Future<String?> Function() accion, String exito) async {
     if (context.read<TurnosProvider>().funcionario.isEmpty) {
       _avisar('Escribí tu nombre de funcionario primero', '');
@@ -62,45 +78,380 @@ class _TurnosScreenState extends State<TurnosScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // watch: esta pantalla se redibuja cada vez que el provider llama notifyListeners()
     final p = context.watch<TurnosProvider>();
+    final sinDatos =
+        p.pendientes.isEmpty && p.llamados.isEmpty && p.atendidos.isEmpty;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gestión de turnos'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Recargar',
-            onPressed: p.cargarTurnos,
+      backgroundColor: Paleta.fondo,
+      body: Stack(
+        children: [
+          // Mancha decorativa arriba a la derecha
+          Positioned(
+            top: -90,
+            right: -70,
+            child: Container(
+              width: 320,
+              height: 220,
+              decoration: BoxDecoration(
+                color: Paleta.terracotaClaro,
+                borderRadius: BorderRadius.circular(160),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _encabezado(p),
+                  const SizedBox(height: 16),
+                  const Divider(color: Paleta.borde, height: 1),
+                  const SizedBox(height: 20),
+                  _controles(p),
+                  const SizedBox(height: 20),
+                  if (p.error != null) ...[
+                    Text(
+                      p.error!,
+                      style: TextStyle(
+                          color: Colors.red.shade400, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Expanded(
+                    child: p.cargando && sinDatos
+                        ? const Center(
+                            child: CircularProgressIndicator(color: Paleta.terracota))
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: _columnaPendientes(p)),
+                              const SizedBox(width: 16),
+                              Expanded(child: _columnaLlamados(p)),
+                              const SizedBox(width: 16),
+                              Expanded(child: _columnaAtendidos(p)),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _panelSuperior(p),
-            const SizedBox(height: 12),
-            if (p.error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(p.error!, style: const TextStyle(color: Colors.red)),
+    );
+  }
+
+  // ---------- Encabezado: título, estado de conexión y recargar ----------
+  Widget _encabezado(TurnosProvider p) {
+    return Row(
+      children: [
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Gestión de turnos',
+                style: TextStyle(
+                    fontSize: 28, fontWeight: FontWeight.w600, color: Paleta.texto),
               ),
-            Expanded(
-              child: p.cargando
-                  ? const Center(child: CircularProgressIndicator())
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: _columnaPendientes(p)),
-                        const SizedBox(width: 12),
-                        Expanded(child: _columnaLlamados(p)),
-                        const SizedBox(width: 12),
-                        Expanded(child: _columnaAtendidos(p)),
-                      ],
-                    ),
+              SizedBox(height: 4),
+              Text(
+                'Organiza y da seguimiento a tus turnos de manera fácil y rápida.',
+                style: TextStyle(color: Paleta.textoSuave),
+              ),
+            ],
+          ),
+        ),
+        _estadoConexion(p.conectado),
+        const SizedBox(width: 12),
+        Material(
+          color: Colors.white,
+          shape: const CircleBorder(),
+          elevation: 2,
+          shadowColor: Colors.black12,
+          child: IconButton(
+            icon: const Icon(Icons.refresh, color: Paleta.texto),
+            tooltip: 'Recargar',
+            onPressed: p.cargarTurnos,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _estadoConexion(bool conectado) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle,
+              size: 10, color: conectado ? Paleta.enLinea : Paleta.terracota),
+          const SizedBox(width: 8),
+          Text(
+            conectado ? 'En línea' : 'Reconectando...',
+            style: const TextStyle(color: Paleta.texto, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Controles: funcionario, cliente y botones ----------
+  Widget _controles(TurnosProvider p) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        SizedBox(
+          width: 240,
+          child: TextField(
+            decoration: _decoracion('Funcionario', Icons.badge_outlined),
+            onChanged: p.setFuncionario,
+          ),
+        ),
+        SizedBox(
+          width: 260,
+          child: Form(
+            key: _formKey,
+            child: TextFormField(
+              controller: _clienteCtrl,
+              decoration: _decoracion('Nombre del cliente', Icons.person_outline),
+              validator: (valor) {
+                final texto = valor?.trim() ?? '';
+                if (texto.isEmpty) return 'Campo obligatorio';
+                if (texto.length < 2) return 'Mínimo 2 caracteres';
+                if (texto.length > 60) return 'Máximo 60 caracteres';
+                return null;
+              },
+              onFieldSubmitted: (_) => _crearTurno(),
+            ),
+          ),
+        ),
+        FilledButton.icon(
+          onPressed: _enviando ? null : _crearTurno,
+          icon: const Icon(Icons.add),
+          label: const Text('Crear turno'),
+          style: _estiloBoton(Paleta.terracota, Colors.white),
+        ),
+        FilledButton.icon(
+          onPressed: () => _accion(p.llamarSiguiente, 'Turno llamado'),
+          icon: const Icon(Icons.campaign_outlined),
+          label: const Text('Llamar siguiente'),
+          style: _estiloBoton(Paleta.salviaClaro, Paleta.salvia),
+        ),
+      ],
+    );
+  }
+
+  InputDecoration _decoracion(String texto, IconData icono) {
+    OutlineInputBorder borde(Color color) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: color),
+        );
+
+    return InputDecoration(
+      hintText: texto,
+      hintStyle: const TextStyle(color: Paleta.textoSuave),
+      prefixIcon: Icon(icono, color: Paleta.textoSuave),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(vertical: 18),
+      enabledBorder: borde(Paleta.borde),
+      focusedBorder: borde(Paleta.terracota),
+      errorBorder: borde(Colors.red.shade300),
+      focusedErrorBorder: borde(Colors.red.shade300),
+    );
+  }
+
+  ButtonStyle _estiloBoton(Color fondo, Color texto) => FilledButton.styleFrom(
+        backgroundColor: fondo,
+        foregroundColor: texto,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        shape: const StadiumBorder(),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      );
+
+  // ---------- Las tres columnas ----------
+  Widget _columnaPendientes(TurnosProvider p) => _columna(
+        titulo: 'Pendientes',
+        icono: Icons.hourglass_bottom,
+        color: Paleta.durazno,
+        colorClaro: Paleta.duraznoClaro,
+        turnos: p.pendientes,
+        vacioIcono: Icons.assignment_outlined,
+        vacioTitulo: 'Sin turnos pendientes',
+        vacioTexto: 'Los turnos que lleguen aparecerán aquí.',
+        item: (t) => _itemTurno(
+          t,
+          detalle: 'Creado ${_hora(t.creadoEn)}',
+          colorNumero: Paleta.duraznoClaro,
+          accion: _botonRedondo(
+            Icons.campaign_outlined,
+            'Llamar',
+            Paleta.terracota,
+            () => _accion(() => p.llamarTurno(t.id), 'Turno ${t.numero} llamado'),
+          ),
+        ),
+      );
+
+  Widget _columnaLlamados(TurnosProvider p) => _columna(
+        titulo: 'Llamados',
+        icono: Icons.call,
+        color: Paleta.salvia,
+        colorClaro: Paleta.salviaClaro,
+        turnos: p.llamados,
+        vacioIcono: Icons.campaign_outlined,
+        vacioTitulo: 'Sin turnos llamados',
+        vacioTexto: 'Aquí aparecerán los turnos que ya fueron llamados.',
+        item: (t) => _itemTurno(
+          t,
+          detalle: 'Llamado ${_hora(t.llamadoEn)} · por ${t.funcionario ?? '-'}',
+          colorNumero: Paleta.salviaClaro,
+          accion: _botonRedondo(
+            Icons.check,
+            'Marcar atendido',
+            Paleta.salvia,
+            () => _accion(() => p.marcarAtendido(t.id), 'Turno ${t.numero} atendido'),
+          ),
+        ),
+      );
+
+  Widget _columnaAtendidos(TurnosProvider p) => _columna(
+        titulo: 'Atendidos',
+        icono: Icons.check,
+        color: Paleta.terracota,
+        colorClaro: Paleta.terracotaClaro,
+        turnos: p.atendidos,
+        vacioIcono: Icons.task_alt,
+        vacioTitulo: 'Sin turnos atendidos',
+        vacioTexto: 'El historial de atención aparecerá aquí.',
+        item: (t) => _itemTurno(
+          t,
+          detalle: 'Creado ${_hora(t.creadoEn)} · Llamado ${_hora(t.llamadoEn)} · '
+              'Atendido ${_hora(t.atendidoEn)} (${t.funcionario ?? '-'})',
+          colorNumero: Paleta.terracotaClaro,
+          accion: Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+                color: Paleta.fondo, shape: BoxShape.circle),
+            child: const Icon(Icons.check, size: 18, color: Paleta.textoSuave),
+          ),
+        ),
+      );
+
+  // Molde común de cada columna
+  Widget _columna({
+    required String titulo,
+    required IconData icono,
+    required Color color,
+    required Color colorClaro,
+    required List<Turno> turnos,
+    required IconData vacioIcono,
+    required String vacioTitulo,
+    required String vacioTexto,
+    required Widget Function(Turno) item,
+  }) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Paleta.tarjeta,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Paleta.borde),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Encabezado de la columna
+          Container(
+            color: colorClaro,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: color,
+                  child: Icon(icono, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '$titulo (${turnos.length})',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w600, color: Paleta.texto),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${turnos.length}',
+                    style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right, color: Paleta.textoSuave),
+              ],
+            ),
+          ),
+          // Contenido: lista o estado vacío
+          Expanded(
+            child: turnos.isEmpty
+                ? _estadoVacio(vacioIcono, vacioTitulo, vacioTexto, color, colorClaro)
+                : ListView.separated(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: turnos.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 6),
+                    itemBuilder: (context, index) => item(turnos[index]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _estadoVacio(
+      IconData icono, String titulo, String texto, Color color, Color colorClaro) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(color: colorClaro, shape: BoxShape.circle),
+              child: Icon(icono, size: 56, color: color),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              titulo,
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600, color: Paleta.texto),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              texto,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Paleta.textoSuave),
             ),
           ],
         ),
@@ -108,147 +459,63 @@ class _TurnosScreenState extends State<TurnosScreen> {
     );
   }
 
-  // ---------- Parte de arriba: funcionario, formulario y "Llamar siguiente" ----------
-  Widget _panelSuperior(TurnosProvider p) {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 12,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SizedBox(
-          width: 220,
-          child: TextField(
-            decoration: const InputDecoration(
-              labelText: 'Funcionario',
-              prefixIcon: Icon(Icons.badge),
-              border: OutlineInputBorder(),
-            ),
-            onChanged: p.setFuncionario,
-          ),
-        ),
-        Form(
-          key: _formKey,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 260,
-                child: TextFormField(
-                  controller: _clienteCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre del cliente',
-                    prefixIcon: Icon(Icons.person),
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (valor) {
-                    final texto = valor?.trim() ?? '';
-                    if (texto.isEmpty) return 'Campo obligatorio';
-                    if (texto.length < 2) return 'Mínimo 2 caracteres';
-                    if (texto.length > 60) return 'Máximo 60 caracteres';
-                    return null; // null = válido
-                  },
-                  onFieldSubmitted: (_) => _crearTurno(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _enviando ? null : _crearTurno,
-                icon: const Icon(Icons.add),
-                label: const Text('Crear turno'),
-              ),
-            ],
-          ),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: () => _accion(p.llamarSiguiente, 'Turno llamado'),
-          icon: const Icon(Icons.campaign),
-          label: const Text('Llamar siguiente'),
-        ),
-      ],
-    );
-  }
-
-  // ---------- Columnas ----------
-  Widget _columnaPendientes(TurnosProvider p) {
-    return _columna(
-      titulo: 'Pendientes',
-      color: Colors.orange,
-      turnos: p.pendientes,
-      item: (t) => ListTile(
-        leading: CircleAvatar(child: Text('${t.numero}')),
-        title: Text(t.cliente),
-        subtitle: Text('Creado: ${_hora(t.creadoEn)}'),
-        trailing: TextButton(
-          onPressed: () => _accion(() => p.llamarTurno(t.id), 'Turno ${t.numero} llamado'),
-          child: const Text('Llamar'),
-        ),
-      ),
-    );
-  }
-
-  Widget _columnaLlamados(TurnosProvider p) {
-    return _columna(
-      titulo: 'Llamados',
-      color: Colors.blue,
-      turnos: p.llamados,
-      item: (t) => ListTile(
-        leading: CircleAvatar(child: Text('${t.numero}')),
-        title: Text(t.cliente),
-        subtitle: Text('Por ${t.funcionario ?? '-'} a las ${_hora(t.llamadoEn)}'),
-        trailing: TextButton(
-          onPressed: () => _accion(() => p.marcarAtendido(t.id), 'Turno ${t.numero} atendido'),
-          child: const Text('Atendido'),
-        ),
-      ),
-    );
-  }
-
-  Widget _columnaAtendidos(TurnosProvider p) {
-    return _columna(
-      titulo: 'Atendidos',
-      color: Colors.green,
-      turnos: p.atendidos,
-      item: (t) => ListTile(
-        leading: CircleAvatar(child: Text('${t.numero}')),
-        title: Text(t.cliente),
-        subtitle: Text(
-          'Creado ${_hora(t.creadoEn)} · Llamado ${_hora(t.llamadoEn)} · '
-          'Atendido ${_hora(t.atendidoEn)} (${t.funcionario ?? '-'})',
-        ),
-      ),
-    );
-  }
-
-  // Molde común para las tres columnas
-  Widget _columna({
-    required String titulo,
-    required Color color,
-    required List<Turno> turnos,
-    required Widget Function(Turno) item,
+  // Tarjeta de cada turno
+  Widget _itemTurno(
+    Turno t, {
+    required String detalle,
+    required Color colorNumero,
+    required Widget accion,
   }) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Paleta.borde.withValues(alpha: 0.6)),
+      ),
+      child: Row(
         children: [
           Container(
-            color: color.withValues(alpha: 0.15),
-            padding: const EdgeInsets.all(12),
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: colorNumero, shape: BoxShape.circle),
             child: Text(
-              '$titulo (${turnos.length})',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              '${t.numero}',
+              style: const TextStyle(fontWeight: FontWeight.w600, color: Paleta.texto),
             ),
           ),
+          const SizedBox(width: 14),
           Expanded(
-            child: turnos.isEmpty
-                ? const Center(child: Text('Sin turnos'))
-                : ListView.separated(
-                    itemCount: turnos.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
-                    itemBuilder: (context, index) => item(turnos[index]),
-                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.cliente,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15, color: Paleta.texto),
+                ),
+                const SizedBox(height: 2),
+                Text(detalle,
+                    style: const TextStyle(fontSize: 12, color: Paleta.textoSuave)),
+              ],
+            ),
           ),
+          accion,
         ],
+      ),
+    );
+  }
+
+  Widget _botonRedondo(
+      IconData icono, String tooltip, Color color, VoidCallback onPressed) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icono, size: 20),
+      style: IconButton.styleFrom(
+        backgroundColor: color.withValues(alpha: 0.12),
+        foregroundColor: color,
       ),
     );
   }

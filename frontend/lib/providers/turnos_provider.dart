@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+
 import '../models/turno.dart';
 import '../services/api_service.dart';
+import '../services/socket_service.dart';
 
 class TurnosProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
@@ -10,7 +12,35 @@ class TurnosProvider extends ChangeNotifier {
 
   bool cargando = false;
   String? error;
-  String funcionario = ''; // quién está usando este navegador
+  String funcionario = '';
+
+  final SocketService _socket = SocketService();
+  bool conectado = false;
+
+  // Conecta el WebSocket.
+  // Cada vez que se conecta o RECONECTA, recarga todo desde el backend.
+  // Así recupera los cambios que se perdió mientras estuvo desconectado.
+  void iniciarTiempoReal() {
+    _socket.conectar(
+      alConectar: () {
+        conectado = true;
+        notifyListeners();
+        cargarTurnos();
+      },
+      alDesconectar: () {
+        conectado = false;
+        notifyListeners();
+      },
+      alRecibirTurno:
+          aplicarTurno, // agrega o reemplaza por id (sin duplicados)
+    );
+  }
+
+  @override
+  void dispose() {
+    _socket.desconectar();
+    super.dispose();
+  }
 
   // Orden de los estados: sirve para no "retroceder" un turno (ver aplicarTurno).
   static const Map<String, int> _orden = {
@@ -28,7 +58,8 @@ class TurnosProvider extends ChangeNotifier {
 
   List<Turno> get pendientes => _porEstado('pendiente');
   List<Turno> get llamados => _porEstado('llamado');
-  List<Turno> get atendidos => _porEstado('atendido').reversed.toList(); // recientes primero
+  List<Turno> get atendidos =>
+      _porEstado('atendido').reversed.toList(); // recientes primero
 
   void setFuncionario(String nombre) {
     funcionario = nombre.trim();
